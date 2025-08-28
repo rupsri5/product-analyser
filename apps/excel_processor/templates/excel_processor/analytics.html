@@ -1,0 +1,220 @@
+{% extends 'base.html' %}
+
+{% block title %}Analytics - Excel Analyzer{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">
+            <i class="fas fa-chart-bar me-2"></i>Analytics Dashboard
+        </h1>
+        <p class="lead">Usage statistics and query insights</p>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ total_queries }}</h4>
+                        <p class="card-text">Total Queries</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-search fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ successful_queries }}</h4>
+                        <p class="card-text">Successful Queries</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ success_rate|floatformat:1 }}%</h4>
+                        <p class="card-text">Success Rate</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-percentage fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ popular_files.count }}</h4>
+                        <p class="card-text">Excel Files</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-file-excel fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Queries -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-clock me-2"></i>Recent Queries
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_queries %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Sheet</th>
+                                    <th>Result</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for query in recent_queries %}
+                                <tr>
+                                    <td>
+                                        <small>{{ query.excel_file.name|truncatechars:20 }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ query.sheet_name|truncatechars:15 }}</small>
+                                    </td>
+                                    <td>
+                                        {% if query.result_found %}
+                                            <span class="badge bg-success">Found</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">Not Found</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ query.query_time|date:"M d, H:i" }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-3x mb-3"></i>
+                        <p>No queries yet</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Popular Files -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-star me-2"></i>Popular Files
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if popular_files %}
+                    {% for file in popular_files %}
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h6 class="mb-0">{{ file.name }}</h6>
+                            <small class="text-muted">
+                                {{ file.get_sheet_count }} sheet{{ file.get_sheet_count|pluralize }} • 
+                                {{ file.get_file_size }}
+                            </small>
+                        </div>
+                        <div>
+                            <span class="badge bg-primary">{{ file.query_count }} queries</span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted">
+                        <i class="fas fa-file-excel fa-3x mb-3"></i>
+                        <p>No files queried yet</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center text-muted">
+                        <i class="fas fa-file-excel fa-3x mb-3"></i>
+                        <p>No Excel files available</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Query Performance Section -->
+{% if total_queries > 0 %}
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Query Performance
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-success">{{ successful_queries }}</h3>
+                        <p class="text-muted">Successful Queries</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-warning">{{ total_queries|add:"-"|add:successful_queries }}</h3>
+                        <p class="text-muted">Failed Queries</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-primary">{{ success_rate|floatformat:1 }}%</h3>
+                        <p class="text-muted">Overall Success Rate</p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress mb-3">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ success_rate }}%">
+                        Success: {{ success_rate|floatformat:1 }}%
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <small class="text-muted">
+                        Based on {{ total_queries }} total quer{{ total_queries|pluralize:"y,ies" }}
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

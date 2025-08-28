@@ -1,0 +1,271 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <form id="filterForm" method="post">
+                        {% csrf_token %}
+                        
+                        <!-- Product Selection -->
+                        <div class="form-floating mb-4">
+                            <select class="form-select" id="excelFile" name="excel_file" required>
+                                <option value="">Select a product</option>
+                                {% for file in excel_files %}
+                                <option value="{{ file.id }}">{{ file.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label for="excelFile">Select Product</label>
+                        </div>
+
+                        <!-- Sheet Selection (shown only if multiple sheets) -->
+                        <div id="sheetSection" class="form-floating mb-4" style="display: none;">
+                            <select class="form-select" id="sheetName" name="sheet_name">
+                                <option value="">Choose type</option>
+                            </select>
+                            <label for="sheetName">Select Type</label>
+                        </div>
+
+                        <!-- Dynamic Filter Section -->
+                        <div id="filterSection" class="mb-4">
+                            <!-- Dynamic filters will be added here -->
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" id="fetchButton">
+                                <i class="fas fa-search me-2"></i>Search
+                                <div class="spinner-border spinner-border-sm ms-2 loading-spinner" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="card mt-4" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Results</h5>
+                    <div id="resultsContent">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    const filterForm = $('#filterForm');
+    const excelFileSelect = $('#excelFile');
+    const sheetSelect = $('#sheetName');
+    const filterSection = $('#filterSection');
+    const resultsSection = $('#resultsSection');
+    const fetchButton = $('#fetchButton');
+    const loadingSpinner = $('.loading-spinner');
+
+    // Function to reset the form state
+    function resetFormState() {
+        filterSection.empty();
+        resultsSection.hide();
+        $('#sheetSection').hide();
+        sheetSelect.empty().append('<option value="">Choose type</option>');
+        $('#fetchButton').hide();
+        $('#resultsContent').empty();
+        currentSheetName = '';
+    }
+
+    // Variable to store the current sheet name
+    let currentSheetName = '';
+
+    // Handle Excel file selection
+    excelFileSelect.change(function() {
+        resetFormState();
+        const fileId = $(this).val();
+        if (fileId) {
+            $.ajax({
+                url: '{% url "excel_processor:get_sheets" %}',
+                data: { file_id: fileId },
+                success: function(data) {
+                    if (data.sheets && data.sheets.length > 0) {
+                        if (data.sheets.length === 1) {
+                            // If there's only one sheet, use it directly without showing dropdown
+                            $('#sheetSection').hide();
+                            currentSheetName = data.sheets[0];
+                            loadFilters(fileId, currentSheetName);
+                        } else {
+                            // If there are multiple sheets, show the dropdown
+                            $('#sheetSection').show();
+                            sheetSelect.empty().append('<option value="">Choose type</option>');
+                            data.sheets.forEach(sheet => {
+                                sheetSelect.append(`<option value="${sheet}">${sheet}</option>`);
+                            });
+                        }
+                    } else {
+                        $('#sheetSection').hide();
+                        $('#fetchButton').hide();
+                    }
+                }
+            });
+        }
+    });
+
+    // Handle sheet selection
+    sheetSelect.change(function() {
+        filterSection.empty();
+        resultsSection.hide();
+        $('#resultsContent').empty();
+        $('#fetchButton').hide();
+        const sheet = $(this).val();
+        if (sheet) {
+            currentSheetName = sheet;
+            loadFilters(excelFileSelect.val(), sheet);
+        }
+    });
+
+    // Load filters for selected sheet
+    function loadFilters(fileId, sheet) {
+        $.ajax({
+            url: '{% url "excel_processor:get_columns" %}',
+            data: { file_id: fileId, sheet_name: sheet },
+            success: function(data) {
+                filterSection.empty();
+                // data.columns is now an object where keys are column names and values are arrays of possible values
+                Object.entries(data.columns).forEach(([column, values]) => {
+                    if (!['total', 'product_code'].includes(column.toLowerCase())) {
+                        const filterGroup = $(`
+                            <div class="form-floating mb-3">
+                                <select class="form-select filter-select" name="${column}" required>
+                                    <option value="">Select ${column.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</option>
+                                    ${values.map(value => `<option value="${value}">${value}</option>`).join('')}
+                                </select>
+                                <label>${column.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</label>
+                            </div>
+                        `);
+                        filterSection.append(filterGroup);
+                    }
+                });
+                // Show the fetch button after filters are loaded
+                $('#fetchButton').show();
+            }
+        });
+    }
+
+    // Handle form submission
+    filterForm.submit(function(e) {
+        e.preventDefault();
+        loadingSpinner.show();
+        fetchButton.prop('disabled', true);
+        resultsSection.hide();
+
+        // Collect filter values
+        const filters = {};
+        $('.filter-select').each(function() {
+            const name = $(this).attr('name');
+            const value = $(this).val();
+            if (value) {
+                filters[name] = value;
+            }
+        });
+
+        // Get the sheet name - either from single sheet or dropdown
+        const selectedSheet = currentSheetName || sheetSelect.val();
+
+        // Prepare the request data
+        const requestData = {
+            file_id: excelFileSelect.val(),
+            sheet_name: selectedSheet,
+            filters: filters
+        };
+
+        $.ajax({
+            url: '{% url "excel_processor:fetch_results" %}',
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify(requestData),
+            success: function(response) {
+                resultsSection.show();
+                if (response.success && response.results) {
+                    let resultsHtml = '<div class="results-container">';
+                    
+                    // First display total if it exists
+                    if ('total' in response.results) {
+                        let totalValue = response.results['total'];
+                        if (totalValue !== null) {
+                            // Convert to number and format to 2 decimal places
+                            totalValue = Number(totalValue).toFixed(2);
+                        } else {
+                            totalValue = '-';
+                        }
+                        resultsHtml += `
+                            <div class="result-row mb-3">
+                                <h5 class="text-primary mb-2">Total</h5>
+                                <p class="h4">Rs ${totalValue}</p>
+                            </div>`;
+                    }
+                    
+                    // Then display all other result columns
+                    for (const [column, value] of Object.entries(response.results)) {
+                        if (column.toLowerCase() !== 'total') {  // Skip total as it's already displayed
+                            // Format the column name for display
+                            const displayName = column.split('_')
+                                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                .join(' ');
+                                
+                            // Format the value
+                            const displayValue = value !== null ? value : '-';
+                            
+                            resultsHtml += `
+                                <div class="result-row mb-3">
+                                    <h5 class="text-primary mb-2">${displayName}</h5>
+                                    <p class="h4">${displayValue}</p>
+                                </div>`;
+                        }
+                    }
+                    resultsHtml += '</div>';
+                    $('#resultsContent').html(resultsHtml);
+                } else {
+                    $('#resultsContent').html(
+                        `<div class="alert alert-info">
+                            ${response.message || 'No results found for the selected filters.'}
+                        </div>`
+                    );
+                }
+            },
+            error: function(xhr) {
+                resultsSection.show();
+                let errorMessage = 'Error fetching results. Please try again.';
+                
+                // Don't submit if no sheet name is available
+                if (!requestData.sheet_name) {
+                    errorMessage = 'Please select all required fields before fetching results.';
+                } else {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.error) {
+                            errorMessage = response.error;
+                        }
+                    } catch (e) {}
+                }
+                
+                $('#resultsContent').html(`<div class="alert alert-danger">${errorMessage}</div>`);
+            },
+            complete: function() {
+                loadingSpinner.hide();
+                fetchButton.prop('disabled', false);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

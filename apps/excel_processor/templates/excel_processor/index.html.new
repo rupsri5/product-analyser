@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body p-4">
+                    <form id="filterForm" method="post">
+                        {% csrf_token %}
+                        
+                        <!-- Product Selection -->
+                        <div class="form-floating mb-4">
+                            <select class="form-select" id="excelFile" name="excel_file" required>
+                                <option value="">Select a product</option>
+                                {% for file in excel_files %}
+                                <option value="{{ file.id }}">{{ file.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label for="excelFile">Select Product</label>
+                        </div>
+
+                        <!-- Sheet Selection (shown only if multiple sheets) -->
+                        <div id="sheetSection" class="form-floating mb-4" style="display: none;">
+                            <select class="form-select" id="sheetName" name="sheet_name">
+                                <option value="">Choose type</option>
+                            </select>
+                            <label for="sheetName">Select Type</label>
+                        </div>
+
+                        <!-- Dynamic Filter Section -->
+                        <div id="filterSection" class="mb-4">
+                            <!-- Dynamic filters will be added here -->
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg" id="fetchButton">
+                                <i class="fas fa-search me-2"></i>Fetch Results
+                                <div class="spinner-border spinner-border-sm ms-2 loading-spinner" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="card mt-4" style="display: none;">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Results</h5>
+                    <div id="resultsContent">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    const filterForm = $('#filterForm');
+    const excelFileSelect = $('#excelFile');
+    const sheetSelect = $('#sheetName');
+    const filterSection = $('#filterSection');
+    const resultsSection = $('#resultsSection');
+    const fetchButton = $('#fetchButton');
+    const loadingSpinner = $('.loading-spinner');
+
+    // Handle Excel file selection
+    excelFileSelect.change(function() {
+        const fileId = $(this).val();
+        if (fileId) {
+            $.ajax({
+                url: '{% url "excel_processor:get_sheets" %}',
+                data: { file_id: fileId },
+                success: function(data) {
+                    if (data.sheets && data.sheets.length > 1) {
+                        $('#sheetSection').show();
+                        sheetSelect.empty().append('<option value="">Choose type</option>');
+                        data.sheets.forEach(sheet => {
+                            sheetSelect.append(`<option value="${sheet}">${sheet}</option>`);
+                        });
+                    } else {
+                        $('#sheetSection').hide();
+                        loadFilters(fileId, data.sheets[0]);
+                    }
+                }
+            });
+        } else {
+            $('#sheetSection').hide();
+            filterSection.empty();
+            resultsSection.hide();
+        }
+    });
+
+    // Handle sheet selection
+    sheetSelect.change(function() {
+        const sheet = $(this).val();
+        if (sheet) {
+            loadFilters(excelFileSelect.val(), sheet);
+        } else {
+            filterSection.empty();
+            resultsSection.hide();
+        }
+    });
+
+    // Load filters for selected sheet
+    function loadFilters(fileId, sheet) {
+        $.ajax({
+            url: '{% url "excel_processor:get_filters" %}',
+            data: { file_id: fileId, sheet_name: sheet },
+            success: function(data) {
+                filterSection.empty();
+                data.columns.forEach(column => {
+                    if (!['total', 'product_code'].includes(column.toLowerCase())) {
+                        const filterGroup = $(`
+                            <div class="form-floating mb-3">
+                                <select class="form-select filter-select" name="${column}" required>
+                                    <option value="">Select ${column}</option>
+                                </select>
+                                <label>${column}</label>
+                            </div>
+                        `);
+                        filterSection.append(filterGroup);
+                    }
+                });
+            }
+        });
+    }
+
+    // Handle form submission
+    filterForm.submit(function(e) {
+        e.preventDefault();
+        loadingSpinner.show();
+        fetchButton.prop('disabled', true);
+
+        $.ajax({
+            url: '{% url "excel_processor:fetch_results" %}',
+            method: 'POST',
+            data: $(this).serialize(),
+            success: function(data) {
+                resultsSection.show();
+                $('#resultsContent').html(data.results);
+            },
+            error: function(xhr) {
+                alert('Error fetching results. Please try again.');
+            },
+            complete: function() {
+                loadingSpinner.hide();
+                fetchButton.prop('disabled', false);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
