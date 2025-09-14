@@ -15,7 +15,7 @@ import numpy as np
 
 from .models import ExcelFile, QueryLog, CustomUser
 
-
+# Test commit
 def is_admin(user):
     return user.is_staff
 
